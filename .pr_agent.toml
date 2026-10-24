@@ -1,9 +1,0 @@
-[github_app]
-pr_commands = ["/agentic_review"]
-
-[review_agent]
-comments_location_policy = "both"
-inline_comments_severity_threshold = 2
-issues_user_guidelines = """
-Review for correctness, security, privacy, and data isolation. Prioritize actionable issues with clear impact and file/line references. Avoid style-only comments. Do not approve or merge pull requests automatically.
-"""
