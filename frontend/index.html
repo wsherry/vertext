@@ -150,6 +150,11 @@
     .msg-bot .bubble { background: var(--paper); border: 1px solid var(--line); }
     .bubble p { margin: 0; }
     .bubble p + p { margin-top: 8px; }
+    .answer-copy { line-height: 1.65; }
+    .answer-copy strong { color: #263c2d; font-weight: 700; }
+    .answer-copy ul, .answer-copy ol { margin: 8px 0 0; padding-left: 22px; }
+    .answer-copy li + li { margin-top: 5px; }
+    .answer-copy a { color: var(--forest); text-underline-offset: 2px; }
 
     .tier {
       display: inline-block; font-size: 11px; font-weight: 700; letter-spacing: 0.02em;
@@ -189,6 +194,9 @@
     /* ---- Composer ---- */
     .composer { border-top: 1px solid var(--line); background: var(--bg); padding: 14px 24px 18px; }
     .composer form { max-width: 760px; margin: 0 auto; display: flex; gap: 8px; align-items: flex-end; }
+    .consent-row { max-width: 760px; margin: 0 auto 10px; display: flex; align-items: flex-start; gap: 9px; font-size: 12px; color: var(--muted); }
+    .consent-row input { margin: 3px 0 0; accent-color: var(--forest); flex: 0 0 auto; }
+    .consent-row label { cursor: pointer; }
     .composer textarea {
       flex: 1; resize: none; font: inherit; color: var(--ink);
       background: var(--paper); border: 1px solid var(--line); border-radius: 10px;
@@ -240,21 +248,19 @@
           <div class="speaker-top">
             <div class="avatar">CH</div>
             <div>
-              <div class="speaker-name">Cameron Hamilton</div>
-              <div class="speaker-role">Principal ML Engineer Architect · Alliance AI</div>
+              <div class="speaker-name" data-speaker-name>Loading speaker…</div>
+              <div class="speaker-role" data-speaker-meta>Conference speaker</div>
             </div>
           </div>
-          <div class="talk-title">Beyond the prompt: Building an AI that takes initiative</div>
-          <span class="status">GitHub Universe · Oct 28–29</span>
+          <div class="talk-title" data-talk-title>Loading talk…</div>
+          <span class="status" data-talk-status>Loading session…</span>
         </div>
       </section>
 
       <section>
         <div class="label">How to read answers</div>
         <div class="legend">
-          <div><span class="tier tier-said" style="margin:0">They've said</span> In Cameron's own words</div>
-          <div><span class="tier tier-likely" style="margin:0">Likely means</span> Inferred from his sources</div>
-          <div><span class="tier tier-general" style="margin:0">General meaning</span> Standard definition</div>
+          <div><span class="tier tier-general" style="margin:0">Talk agent</span> Generated from speaker-approved sources</div>
         </div>
       </section>
 
@@ -270,89 +276,74 @@
         </div>
         <div class="chat-header-text">
           <h1>Ask the talk</h1>
-          <p>Questions are answered only from Cameron's own material.</p>
+          <p>Answers are grounded in speaker-approved material for this talk.</p>
         </div>
-        <span class="preview-pill" title="The AI gateway isn't connected yet; replies are samples.">Preview mode</span>
+        <span class="preview-pill" id="mode-pill" title="Connecting to the talk agent.">Connecting…</span>
       </header>
 
       <div class="messages" id="messages" aria-live="polite">
         <div class="messages-inner" id="messages-inner">
           <div class="mobile-speaker">
-            <div class="speaker-name">Cameron Hamilton</div>
-            <div class="speaker-role">Principal ML Engineer Architect · Alliance AI</div>
-            <div class="talk-title">Beyond the prompt: Building an AI that takes initiative</div>
-            <span class="status">GitHub Universe · Oct 28–29</span>
+            <div class="speaker-name" data-speaker-name>Loading speaker…</div>
+            <div class="speaker-role" data-speaker-meta>Conference speaker</div>
+            <div class="talk-title" data-talk-title>Loading talk…</div>
+            <span class="status" data-talk-status>Loading session…</span>
           </div>
         </div>
       </div>
 
       <div class="composer">
+        <label class="consent-row"><input id="consent" type="checkbox"><span>I agree to send my question to the talk agent. In a live session, questions are stored without identity for aggregate speaker feedback; test questions are not counted.</span></label>
         <form id="ask-form">
-          <textarea id="question" rows="1" placeholder="Ask what Cameron means…" aria-label="Your question"></textarea>
+          <textarea id="question" rows="1" placeholder="Ask about this talk…" aria-label="Your question"></textarea>
           <button class="send" id="send" type="submit" disabled>Ask</button>
         </form>
         <div class="composer-foot">
           <div id="sources-mobile"></div>
-          <p class="composer-note">If it isn't in Cameron's sources, Vertext will say so. It never guesses.</p>
+          <p class="composer-note" id="composer-note">Consent is required before a question is sent.</p>
         </div>
       </div>
     </main>
   </div>
 
   <script>
-    // The sources that passed the quality gates (see sources/*.json).
-    const SOURCES = {
-      abstract: { name: "Session abstract", url: "https://reg.githubuniverse.com/flow/github/universe26/attendee-portal/page/sessioncatalog/session/1790284506862001SPzs" },
-      profile: { name: "LinkedIn profile", url: "https://www.linkedin.com/in/cameron-r-hamilton/" },
-      youtube: { name: "Rubber Duck Thursday (YouTube)", url: "https://www.youtube.com/watch?v=Osp54zk7Hco" },
-      article: { name: "MIT CSAIL interview (2020)", url: "https://www.csail.mit.edu/news/mit-talks-love-blinds-aidata-scientist-cameron-hamilton" },
-      company: { name: "Alliance AI website", url: "https://www.allianceai.co/" },
-    };
-
+    const TALK_ID = decodeURIComponent(location.pathname.split('/').filter(Boolean).at(-1) || '');
+    const PREVIEW_REQUESTED = new URLSearchParams(location.search).get('preview') === '1';
+    let SOURCES = [];
+    let isPreview = true;
+    let agentReady = false;
     const TIERS = {
-      said: { label: "They've said", css: "tier-said" },
-      likely: { label: "Likely means", css: "tier-likely" },
-      general: { label: "General meaning", css: "tier-general" },
-      none: { label: "Not in my sources", css: "tier-none" },
+      agent: { label: "Talk agent", css: "tier-general" },
     };
 
-    // PREVIEW ONLY: sample replies until the TrueFoundry gateway is connected.
-    // Later, askVertext() will send the question + dossier to the gateway instead.
-    function previewReply(question) {
-      const q = question.toLowerCase();
-      if (q.includes("alliance") || q.includes("desk") || q.includes("company")) {
-        return {
-          tier: "said",
-          text: "Alliance Desk is an AI front desk for appointment-driven businesses. It answers calls, handles common questions, and books appointments.",
-          source: "company",
-        };
-      }
-      if (q.includes("initiative") || q.includes("proactive") || q.includes("agent")) {
-        return {
-          tier: "general",
-          text: "In general, an AI that \"takes initiative\" acts without waiting for a prompt: it notices something that needs doing and starts the work itself. This is the standard meaning, not Cameron's own definition.",
-          source: null,
-        };
-      }
-      return {
-        tier: "none",
-        text: "That's not in my sources, so I won't guess. Try asking about a term or idea from the talk.",
-        source: null,
-      };
-    }
-
-    async function askVertext(question) {
-      await new Promise(r => setTimeout(r, 900)); // simulate the network round trip
-      return previewReply(question);
-    }
-
-    // ---- Rendering ----
     const inner = document.getElementById("messages-inner");
     const scroller = document.getElementById("messages");
     const form = document.getElementById("ask-form");
     const input = document.getElementById("question");
     const sendBtn = document.getElementById("send");
+    const consentInput = document.getElementById("consent");
+    const modePill = document.getElementById("mode-pill");
+    const composerNote = document.getElementById("composer-note");
 
+    async function api(url, options = {}) {
+      const response = await fetch(url, {
+        ...options,
+        headers: { ...(options.body ? { "Content-Type": "application/json" } : {}), ...options.headers },
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || `Request failed (${response.status}).`);
+      return data;
+    }
+
+    async function askVertext(question) {
+      const result = await api(`/api/talks/${encodeURIComponent(TALK_ID)}/ask`, {
+        method: "POST",
+        body: JSON.stringify({ question, consent: consentInput.checked, preview: isPreview }),
+      });
+      return { tier: "agent", text: result.answer };
+    }
+
+    // ---- Rendering ----
     function el(tag, className, text) {
       const node = document.createElement(tag);
       if (className) node.className = className;
@@ -382,21 +373,62 @@
       return msg;
     }
 
+    function appendFormattedText(parent, text) {
+      const pattern = /(\*\*[^*]+\*\*|__[^_]+__|\*[^*\n]+\*)/g;
+      let cursor = 0;
+      for (const match of text.matchAll(pattern)) {
+        if (match.index > cursor) parent.appendChild(document.createTextNode(text.slice(cursor, match.index)));
+        const marker = match[0];
+        const strong = marker.startsWith('**') || marker.startsWith('__');
+        const node = document.createElement(strong ? 'strong' : 'em');
+        node.textContent = marker.slice(strong ? 2 : 1, strong ? -2 : -1);
+        parent.appendChild(node);
+        cursor = match.index + marker.length;
+      }
+      if (cursor < text.length) parent.appendChild(document.createTextNode(text.slice(cursor)));
+    }
+
+    function renderAnswerText(container, text) {
+      const lines = String(text || '').replace(/\r\n?/g, '\n').split('\n');
+      let index = 0;
+      while (index < lines.length) {
+        if (!lines[index].trim()) { index += 1; continue; }
+        const listPattern = /^\s*(?:([-*•])|(\d+)[.)])\s+(.+)$/;
+        const listMatch = lines[index].match(listPattern);
+        if (listMatch) {
+          const ordered = Boolean(listMatch[2]);
+          const list = document.createElement(ordered ? 'ol' : 'ul');
+          while (index < lines.length) {
+            const item = lines[index].match(listPattern);
+            if (!item || Boolean(item[2]) !== ordered) break;
+            const li = document.createElement('li');
+            appendFormattedText(li, item[3].replace(/(?<!\*)\*(?!\*)|(?<!_)_(?!_)/g, ''));
+            list.appendChild(li);
+            index += 1;
+          }
+          container.appendChild(list);
+          continue;
+        }
+        const paragraph = document.createElement('p');
+        let first = true;
+        while (index < lines.length && lines[index].trim() && !listPattern.test(lines[index])) {
+          const line = lines[index].replace(/^#{1,6}\s+/, '').replace(/\s+#+\s*$/, '');
+          if (!first) paragraph.appendChild(document.createElement('br'));
+          appendFormattedText(paragraph, line.replace(/(?<!\*)\*(?!\*)|(?<!_)_(?!_)/g, ''));
+          first = false;
+          index += 1;
+        }
+        container.appendChild(paragraph);
+      }
+    }
+
     function addAnswer(answer) {
       addBotMessage(bubble => {
-        const tier = TIERS[answer.tier];
+        const tier = TIERS[answer.tier] || TIERS.agent;
         bubble.appendChild(el("span", "tier " + tier.css, tier.label));
-        bubble.appendChild(el("p", "", answer.text));
-        if (answer.source) {
-          const src = SOURCES[answer.source];
-          const cite = el("div", "cite", "Source:");
-          const link = el("a", "", src.name);
-          link.href = src.url;
-          link.target = "_blank";
-          link.rel = "noopener";
-          cite.appendChild(link);
-          bubble.appendChild(cite);
-        }
+        const content = el("div", "answer-copy");
+        renderAnswerText(content, answer.text);
+        bubble.appendChild(content);
       });
     }
 
@@ -411,6 +443,11 @@
     async function submit(question) {
       question = question.trim();
       if (!question) return;
+      if (!consentInput.checked) {
+        addBotMessage(bubble => bubble.appendChild(el("p", "", "Please check the consent box before sending your question to the talk agent.")));
+        consentInput.focus();
+        return;
+      }
       document.querySelector(".suggestions")?.remove();
       addUserMessage(question);
       input.value = "";
@@ -418,9 +455,18 @@
       sendBtn.disabled = true;
 
       const typing = addTyping();
-      const answer = await askVertext(question);
-      typing.remove();
-      addAnswer(answer);
+      try {
+        const answer = await askVertext(question);
+        typing.remove();
+        addAnswer(answer);
+      } catch (error) {
+        typing.remove();
+        addBotMessage(bubble => {
+          bubble.appendChild(el("span", "tier tier-none", "Could not answer"));
+          bubble.appendChild(el("p", "", error.message || "The talk agent is unavailable. Please try again."));
+        });
+      }
+      updateSendState();
       input.focus();
     }
 
@@ -430,18 +476,18 @@
       const summary = el("summary");
       summary.append(
         el("span", "", "Sources"),
-        el("span", "count", String(Object.keys(SOURCES).length)),
+        el("span", "count", String(SOURCES.length)),
         el("span", "caret", "▲"),
       );
       const menu = el("div", "sources-menu");
       const list = el("ul", "source-list");
-      for (const src of Object.values(SOURCES)) {
+      for (const src of SOURCES) {
         const li = el("li");
         const a = el("a");
         a.href = src.url;
         a.target = "_blank";
         a.rel = "noopener";
-        a.textContent = src.name;
+        a.textContent = src.title;
         li.appendChild(a);
         list.appendChild(li);
       }
@@ -449,8 +495,11 @@
       details.append(summary, menu);
       return details;
     }
-    document.getElementById("sources-desktop").appendChild(buildSourcesDropdown());
-    document.getElementById("sources-mobile").appendChild(buildSourcesDropdown());
+    function renderSources() {
+      document.getElementById("sources-desktop").replaceChildren(buildSourcesDropdown());
+      document.getElementById("sources-mobile").replaceChildren(buildSourcesDropdown());
+    }
+    renderSources();
 
     // Close an open dropdown when clicking elsewhere or pressing Escape.
     document.addEventListener("click", e => {
@@ -464,12 +513,12 @@
 
     // ---- Welcome message + suggested questions ----
     addBotMessage(bubble => {
-      bubble.appendChild(el("p", "", "Hi! I can explain what Cameron means during his talk, using only his own talks, profile, and company material."));
-      bubble.appendChild(el("p", "", "Every answer is labeled with how sure I am and where it came from."));
+      bubble.appendChild(el("p", "", "Hi! I’m the Vertext companion for this talk. Ask about an idea or term from the session."));
+      bubble.appendChild(el("p", "", "Answers come from the speaker’s approved material. The agent will say when that material doesn’t cover a question."));
     });
 
     const suggestions = el("div", "suggestions");
-    ["What is Alliance Desk?", "What does \"takes initiative\" mean?", "What's his favorite movie?"].forEach(text => {
+    ["What is the main idea of this talk?", "Can you explain a key concept?", "What should I ask next?"].forEach(text => {
       const chip = el("button", "chip", text);
       chip.type = "button";
       chip.addEventListener("click", () => submit(text));
@@ -482,10 +531,14 @@
       input.style.height = "auto";
       input.style.height = Math.min(input.scrollHeight, 140) + "px";
     }
+    function updateSendState() {
+      sendBtn.disabled = !agentReady || !consentInput.checked || !input.value.trim();
+    }
     input.addEventListener("input", () => {
-      sendBtn.disabled = !input.value.trim();
+      updateSendState();
       resize();
     });
+    consentInput.addEventListener("change", updateSendState);
     input.addEventListener("keydown", e => {
       if (e.key === "Enter" && !e.shiftKey) { // Enter sends, Shift+Enter makes a new line
         e.preventDefault();
@@ -496,6 +549,41 @@
       e.preventDefault();
       submit(input.value);
     });
+
+    async function initializeAttendee() {
+      if (!TALK_ID) {
+        modePill.textContent = "No talk selected";
+        addBotMessage(bubble => bubble.appendChild(el("p", "", "Open this page from a prepared talk in the speaker workspace.")));
+        return;
+      }
+      try {
+        const data = await api(`/api/talks/${encodeURIComponent(TALK_ID)}/attendee${PREVIEW_REQUESTED ? "?preview=1" : ""}`);
+        const { talk } = data;
+        isPreview = Boolean(data.preview);
+        SOURCES = data.sources || [];
+        document.title = `Vertext · ${talk.title}`;
+        document.querySelectorAll("[data-speaker-name]").forEach(node => node.textContent = talk.speakerName);
+        document.querySelectorAll("[data-speaker-meta]").forEach(node => node.textContent = talk.conference || "Conference speaker");
+        document.querySelectorAll("[data-talk-title]").forEach(node => node.textContent = talk.title);
+        document.querySelectorAll("[data-talk-status]").forEach(node => node.textContent = `${talk.conference || "Conference"} · ${isPreview ? "Agent test" : "Live session"}`);
+        document.querySelectorAll(".avatar").forEach(node => {
+          node.textContent = talk.speakerName.split(/\s+/).filter(Boolean).slice(0, 2).map(part => part[0]).join("").toUpperCase();
+        });
+        modePill.textContent = isPreview ? "Test mode · not counted" : "Live session";
+        modePill.title = isPreview ? "Test questions are sent to the prepared agent and are not included in attendee insights." : "Questions are sent to the live talk agent and included in aggregate speaker feedback.";
+        composerNote.textContent = isPreview
+          ? "Test questions are not added to attendee insights. Your consent is still required to send them to the agent."
+          : "Live questions are stored without identity for aggregate speaker feedback and cleared when the speaker report is generated.";
+        renderSources();
+        agentReady = true;
+        updateSendState();
+      } catch (error) {
+        modePill.textContent = "Agent unavailable";
+        composerNote.textContent = error.message || "This talk agent is not available.";
+        addBotMessage(bubble => bubble.appendChild(el("p", "", error.message || "This talk agent is not available yet.")));
+      }
+    }
+    initializeAttendee();
   </script>
 </body>
 </html>
