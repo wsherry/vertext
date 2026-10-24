@@ -1,0 +1,501 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Vertext · Ask the Talk</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@600;700;800&display=swap" rel="stylesheet">
+  <style>
+    /* ---- Vertext core tokens ---- */
+    :root {
+      --ink: #20211f;
+      --muted: #777b76;
+      --paper: #ffffff;
+      --bg: #f5f5f1;
+      --wash: #f4f5f0;
+      --line: #e6e7e1;
+      --forest: #446b52;
+      --forest-soft: #e9f0e9;
+      --purple: #7261a3;
+      --purple-soft: #f0edfa;
+      --amber: #927243;
+      --amber-soft: #f7f0e3;
+      --red: #a3574e;
+      --red-soft: #f8ece9;
+      --focus: #acc0ae;
+      --sidebar-w: 300px;
+    }
+
+    * { box-sizing: border-box; }
+    html, body { height: 100%; margin: 0; }
+    body {
+      font-family: "DM Sans", sans-serif;
+      font-size: 15px;
+      line-height: 1.5;
+      color: var(--ink);
+      background: var(--bg);
+    }
+    h1, h2, h3, .wordmark { font-family: "Manrope", sans-serif; letter-spacing: -0.02em; line-height: 1.2; margin: 0; }
+    a { color: var(--forest); }
+    :focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+
+    /* ---- Layout: sidebar + chat ---- */
+    .app { display: flex; height: 100%; }
+
+    .sidebar {
+      width: var(--sidebar-w);
+      flex-shrink: 0;
+      background: var(--wash);
+      border-right: 1px solid var(--line);
+      padding: 20px 18px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 22px;
+    }
+    .brand { display: flex; align-items: center; gap: 10px; }
+    .brand-mark {
+      width: 30px; height: 30px; border-radius: 8px;
+      background: var(--forest); color: #fff;
+      display: grid; place-items: center;
+      font-family: "Manrope", sans-serif; font-weight: 800; font-size: 16px;
+    }
+    .wordmark { font-weight: 800; font-size: 18px; }
+
+    .label { font-size: 12px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 8px; }
+
+    .speaker-card { background: var(--paper); border: 1px solid var(--line); border-radius: 12px; padding: 16px; }
+    .speaker-top { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
+    .avatar {
+      width: 44px; height: 44px; border-radius: 50%;
+      background: var(--forest-soft); color: var(--forest);
+      display: grid; place-items: center;
+      font-family: "Manrope", sans-serif; font-weight: 800;
+    }
+    .speaker-name { font-size: 16px; font-weight: 700; }
+    .speaker-role { font-size: 13px; color: var(--muted); }
+    .talk-title { font-family: "Manrope", sans-serif; font-weight: 700; font-size: 14px; margin-bottom: 10px; }
+    .status {
+      display: inline-flex; align-items: center; gap: 6px;
+      font-size: 12px; font-weight: 600; color: var(--forest);
+      background: var(--forest-soft); border-radius: 999px; padding: 3px 10px;
+    }
+    .status::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--forest); }
+
+    /* ---- Sources dropdown (opens upward from the bottom-left) ---- */
+    .sidebar-foot { margin-top: auto; }
+    .sources-dropdown { position: relative; }
+    .sources-dropdown summary {
+      list-style: none; cursor: pointer; user-select: none;
+      display: inline-flex; align-items: center; gap: 8px;
+      font-size: 13px; font-weight: 600; color: var(--ink);
+      background: var(--paper); border: 1px solid var(--line); border-radius: 7px;
+      padding: 7px 12px; transition: border-color 0.15s, transform 0.08s;
+    }
+    .sources-dropdown summary::-webkit-details-marker { display: none; }
+    .sources-dropdown summary:hover { border-color: var(--forest); }
+    .sources-dropdown summary:active { transform: scale(0.97); }
+    .sources-dropdown .count {
+      font-size: 11px; color: var(--purple); background: var(--purple-soft);
+      border-radius: 999px; padding: 0 7px;
+    }
+    .sources-dropdown .caret { font-size: 10px; color: var(--muted); transition: transform 0.15s; }
+    .sources-dropdown[open] .caret { transform: rotate(180deg); }
+    .sources-dropdown[open] summary { border-color: var(--forest); background: var(--forest-soft); }
+    .sources-menu {
+      position: absolute; left: 0; bottom: calc(100% + 8px); z-index: 10;
+      width: min(280px, calc(100vw - 32px));
+      background: var(--paper); border: 1px solid var(--line); border-radius: 10px;
+      box-shadow: 0 8px 24px rgba(32, 33, 31, 0.10);
+      padding: 6px;
+    }
+    .source-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+    .source-list a {
+      display: flex; align-items: center; justify-content: space-between; gap: 8px;
+      text-decoration: none; color: var(--ink);
+      border-radius: 7px; padding: 8px 10px; font-size: 13px; font-weight: 500;
+    }
+    .source-list a:hover { background: var(--wash); }
+
+    .legend { display: flex; flex-direction: column; gap: 8px; font-size: 13px; color: var(--muted); }
+    .legend div { display: flex; align-items: center; gap: 8px; }
+
+    /* ---- Chat ---- */
+    .chat { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+
+    .chat-header {
+      display: flex; align-items: center; justify-content: space-between; gap: 12px;
+      padding: 14px 24px; border-bottom: 1px solid var(--line); background: var(--bg);
+    }
+    .chat-header h1 { font-size: 18px; font-weight: 800; }
+    .chat-header p { margin: 2px 0 0; font-size: 13px; color: var(--muted); }
+    .mobile-brand { display: none; }
+    .preview-pill { font-size: 12px; font-weight: 600; color: var(--amber); background: var(--amber-soft); border-radius: 999px; padding: 3px 10px; white-space: nowrap; }
+
+    .messages { flex: 1; overflow-y: auto; padding: 24px; }
+    .messages-inner { max-width: 760px; margin: 0 auto; display: flex; flex-direction: column; gap: 16px; }
+
+    .msg { display: flex; gap: 10px; max-width: 100%; }
+    .msg-user { justify-content: flex-end; }
+    .bot-icon {
+      width: 28px; height: 28px; flex-shrink: 0; border-radius: 7px;
+      background: var(--forest); color: #fff;
+      display: grid; place-items: center;
+      font-family: "Manrope", sans-serif; font-weight: 800; font-size: 13px;
+    }
+    .bubble { border-radius: 12px; padding: 12px 14px; max-width: min(600px, 85%); overflow-wrap: anywhere; }
+    .msg-user .bubble { background: var(--forest-soft); border: 1px solid #d6e2d7; }
+    .msg-bot .bubble { background: var(--paper); border: 1px solid var(--line); }
+    .bubble p { margin: 0; }
+    .bubble p + p { margin-top: 8px; }
+
+    .tier {
+      display: inline-block; font-size: 11px; font-weight: 700; letter-spacing: 0.02em;
+      border-radius: 6px; padding: 2px 8px; margin-bottom: 8px;
+    }
+    .tier-said { color: var(--forest); background: var(--forest-soft); }
+    .tier-likely { color: var(--purple); background: var(--purple-soft); }
+    .tier-general { color: var(--amber); background: var(--amber-soft); }
+    .tier-none { color: var(--muted); background: var(--wash); border: 1px solid var(--line); }
+
+    .cite {
+      display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+      margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line);
+      font-size: 12px; color: var(--muted);
+    }
+    .cite a {
+      font-weight: 600; text-decoration: none;
+      color: var(--purple); background: var(--purple-soft); border-radius: 6px; padding: 2px 8px;
+    }
+    .cite a:hover { text-decoration: underline; }
+
+    .typing { display: inline-flex; gap: 4px; padding: 4px 2px; }
+    .typing span { width: 6px; height: 6px; border-radius: 50%; background: var(--muted); opacity: 0.4; animation: blink 1.2s infinite; }
+    .typing span:nth-child(2) { animation-delay: 0.2s; }
+    .typing span:nth-child(3) { animation-delay: 0.4s; }
+    @keyframes blink { 0%, 80%, 100% { opacity: 0.25; } 40% { opacity: 1; } }
+
+    .suggestions { display: flex; flex-wrap: wrap; gap: 8px; padding-left: 38px; }
+    .chip {
+      font: inherit; font-size: 13px; font-weight: 500; color: var(--ink);
+      background: var(--paper); border: 1px solid var(--line); border-radius: 999px;
+      padding: 6px 12px; cursor: pointer; transition: transform 0.08s, border-color 0.15s;
+    }
+    .chip:hover { border-color: var(--forest); color: var(--forest); }
+    .chip:active { transform: scale(0.97); }
+
+    /* ---- Composer ---- */
+    .composer { border-top: 1px solid var(--line); background: var(--bg); padding: 14px 24px 18px; }
+    .composer form { max-width: 760px; margin: 0 auto; display: flex; gap: 8px; align-items: flex-end; }
+    .composer textarea {
+      flex: 1; resize: none; font: inherit; color: var(--ink);
+      background: var(--paper); border: 1px solid var(--line); border-radius: 10px;
+      padding: 10px 12px; min-height: 44px; max-height: 140px; line-height: 1.4;
+    }
+    .composer textarea:focus { outline: 3px solid var(--focus); outline-offset: 0; border-color: var(--forest); }
+    .send {
+      font: inherit; font-weight: 600; color: #fff; background: var(--forest);
+      border: none; border-radius: 7px; height: 44px; padding: 0 18px; cursor: pointer;
+      transition: transform 0.08s, opacity 0.15s;
+    }
+    .send:active { transform: scale(0.97); }
+    .send:disabled { opacity: 0.45; cursor: not-allowed; }
+    .composer-foot { max-width: 760px; margin: 8px auto 0; display: flex; align-items: center; gap: 12px; }
+    .composer-note { margin: 0; font-size: 12px; color: var(--muted); }
+    #sources-mobile { display: none; flex-shrink: 0; }
+
+    /* ---- Mobile: sidebar collapses, header carries the brand ---- */
+    @media (max-width: 860px) {
+      .sidebar { display: none; }
+      .mobile-brand { display: flex; }
+      .chat-header { padding: 12px 16px; }
+      .chat-header-text { display: none; }
+      .messages { padding: 16px; }
+      .composer { padding: 12px 16px 16px; }
+      .bubble { max-width: 88%; }
+      .suggestions { padding-left: 0; }
+      .mobile-speaker { display: block; }
+      #sources-mobile { display: block; }
+    }
+    .mobile-speaker { display: none; background: var(--paper); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; }
+    .mobile-speaker .speaker-name { font-size: 15px; }
+    .mobile-speaker .talk-title { margin: 6px 0 8px; }
+  </style>
+</head>
+<body>
+  <div class="app">
+
+    <!-- Sidebar: speaker + sources -->
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-mark">V</div>
+        <span class="wordmark">Vertext</span>
+      </div>
+
+      <section>
+        <div class="label">Speaker</div>
+        <div class="speaker-card">
+          <div class="speaker-top">
+            <div class="avatar">CH</div>
+            <div>
+              <div class="speaker-name">Cameron Hamilton</div>
+              <div class="speaker-role">Principal ML Engineer Architect · Alliance AI</div>
+            </div>
+          </div>
+          <div class="talk-title">Beyond the prompt: Building an AI that takes initiative</div>
+          <span class="status">GitHub Universe · Oct 28–29</span>
+        </div>
+      </section>
+
+      <section>
+        <div class="label">How to read answers</div>
+        <div class="legend">
+          <div><span class="tier tier-said" style="margin:0">They've said</span> In Cameron's own words</div>
+          <div><span class="tier tier-likely" style="margin:0">Likely means</span> Inferred from his sources</div>
+          <div><span class="tier tier-general" style="margin:0">General meaning</span> Standard definition</div>
+        </div>
+      </section>
+
+      <div class="sidebar-foot" id="sources-desktop"></div>
+    </aside>
+
+    <!-- Chat -->
+    <main class="chat">
+      <header class="chat-header">
+        <div class="brand mobile-brand">
+          <div class="brand-mark">V</div>
+          <span class="wordmark">Vertext</span>
+        </div>
+        <div class="chat-header-text">
+          <h1>Ask the talk</h1>
+          <p>Questions are answered only from Cameron's own material.</p>
+        </div>
+        <span class="preview-pill" title="The AI gateway isn't connected yet; replies are samples.">Preview mode</span>
+      </header>
+
+      <div class="messages" id="messages" aria-live="polite">
+        <div class="messages-inner" id="messages-inner">
+          <div class="mobile-speaker">
+            <div class="speaker-name">Cameron Hamilton</div>
+            <div class="speaker-role">Principal ML Engineer Architect · Alliance AI</div>
+            <div class="talk-title">Beyond the prompt: Building an AI that takes initiative</div>
+            <span class="status">GitHub Universe · Oct 28–29</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="composer">
+        <form id="ask-form">
+          <textarea id="question" rows="1" placeholder="Ask what Cameron means…" aria-label="Your question"></textarea>
+          <button class="send" id="send" type="submit" disabled>Ask</button>
+        </form>
+        <div class="composer-foot">
+          <div id="sources-mobile"></div>
+          <p class="composer-note">If it isn't in Cameron's sources, Vertext will say so. It never guesses.</p>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <script>
+    // The sources that passed the quality gates (see sources/*.json).
+    const SOURCES = {
+      abstract: { name: "Session abstract", url: "https://reg.githubuniverse.com/flow/github/universe26/attendee-portal/page/sessioncatalog/session/1790284506862001SPzs" },
+      profile: { name: "LinkedIn profile", url: "https://www.linkedin.com/in/cameron-r-hamilton/" },
+      youtube: { name: "Rubber Duck Thursday (YouTube)", url: "https://www.youtube.com/watch?v=Osp54zk7Hco" },
+      article: { name: "MIT CSAIL interview (2020)", url: "https://www.csail.mit.edu/news/mit-talks-love-blinds-aidata-scientist-cameron-hamilton" },
+      company: { name: "Alliance AI website", url: "https://www.allianceai.co/" },
+    };
+
+    const TIERS = {
+      said: { label: "They've said", css: "tier-said" },
+      likely: { label: "Likely means", css: "tier-likely" },
+      general: { label: "General meaning", css: "tier-general" },
+      none: { label: "Not in my sources", css: "tier-none" },
+    };
+
+    // PREVIEW ONLY: sample replies until the TrueFoundry gateway is connected.
+    // Later, askVertext() will send the question + dossier to the gateway instead.
+    function previewReply(question) {
+      const q = question.toLowerCase();
+      if (q.includes("alliance") || q.includes("desk") || q.includes("company")) {
+        return {
+          tier: "said",
+          text: "Alliance Desk is an AI front desk for appointment-driven businesses. It answers calls, handles common questions, and books appointments.",
+          source: "company",
+        };
+      }
+      if (q.includes("initiative") || q.includes("proactive") || q.includes("agent")) {
+        return {
+          tier: "general",
+          text: "In general, an AI that \"takes initiative\" acts without waiting for a prompt: it notices something that needs doing and starts the work itself. This is the standard meaning, not Cameron's own definition.",
+          source: null,
+        };
+      }
+      return {
+        tier: "none",
+        text: "That's not in my sources, so I won't guess. Try asking about a term or idea from the talk.",
+        source: null,
+      };
+    }
+
+    async function askVertext(question) {
+      await new Promise(r => setTimeout(r, 900)); // simulate the network round trip
+      return previewReply(question);
+    }
+
+    // ---- Rendering ----
+    const inner = document.getElementById("messages-inner");
+    const scroller = document.getElementById("messages");
+    const form = document.getElementById("ask-form");
+    const input = document.getElementById("question");
+    const sendBtn = document.getElementById("send");
+
+    function el(tag, className, text) {
+      const node = document.createElement(tag);
+      if (className) node.className = className;
+      if (text) node.textContent = text; // textContent keeps user input from becoming HTML
+      return node;
+    }
+
+    function scrollDown() { scroller.scrollTop = scroller.scrollHeight; }
+
+    function addUserMessage(text) {
+      const msg = el("div", "msg msg-user");
+      const bubble = el("div", "bubble");
+      bubble.appendChild(el("p", "", text));
+      msg.appendChild(bubble);
+      inner.appendChild(msg);
+      scrollDown();
+    }
+
+    function addBotMessage(build) {
+      const msg = el("div", "msg msg-bot");
+      msg.appendChild(el("div", "bot-icon", "V"));
+      const bubble = el("div", "bubble");
+      build(bubble);
+      msg.appendChild(bubble);
+      inner.appendChild(msg);
+      scrollDown();
+      return msg;
+    }
+
+    function addAnswer(answer) {
+      addBotMessage(bubble => {
+        const tier = TIERS[answer.tier];
+        bubble.appendChild(el("span", "tier " + tier.css, tier.label));
+        bubble.appendChild(el("p", "", answer.text));
+        if (answer.source) {
+          const src = SOURCES[answer.source];
+          const cite = el("div", "cite", "Source:");
+          const link = el("a", "", src.name);
+          link.href = src.url;
+          link.target = "_blank";
+          link.rel = "noopener";
+          cite.appendChild(link);
+          bubble.appendChild(cite);
+        }
+      });
+    }
+
+    function addTyping() {
+      return addBotMessage(bubble => {
+        const dots = el("div", "typing");
+        dots.append(el("span"), el("span"), el("span"));
+        bubble.appendChild(dots);
+      });
+    }
+
+    async function submit(question) {
+      question = question.trim();
+      if (!question) return;
+      document.querySelector(".suggestions")?.remove();
+      addUserMessage(question);
+      input.value = "";
+      resize();
+      sendBtn.disabled = true;
+
+      const typing = addTyping();
+      const answer = await askVertext(question);
+      typing.remove();
+      addAnswer(answer);
+      input.focus();
+    }
+
+    // ---- Sources dropdown (sidebar on desktop, next to the composer on mobile) ----
+    function buildSourcesDropdown() {
+      const details = el("details", "sources-dropdown");
+      const summary = el("summary");
+      summary.append(
+        el("span", "", "Sources"),
+        el("span", "count", String(Object.keys(SOURCES).length)),
+        el("span", "caret", "▲"),
+      );
+      const menu = el("div", "sources-menu");
+      const list = el("ul", "source-list");
+      for (const src of Object.values(SOURCES)) {
+        const li = el("li");
+        const a = el("a");
+        a.href = src.url;
+        a.target = "_blank";
+        a.rel = "noopener";
+        a.textContent = src.name;
+        li.appendChild(a);
+        list.appendChild(li);
+      }
+      menu.appendChild(list);
+      details.append(summary, menu);
+      return details;
+    }
+    document.getElementById("sources-desktop").appendChild(buildSourcesDropdown());
+    document.getElementById("sources-mobile").appendChild(buildSourcesDropdown());
+
+    // Close an open dropdown when clicking elsewhere or pressing Escape.
+    document.addEventListener("click", e => {
+      document.querySelectorAll(".sources-dropdown[open]").forEach(d => {
+        if (!d.contains(e.target)) d.open = false;
+      });
+    });
+    document.addEventListener("keydown", e => {
+      if (e.key === "Escape") document.querySelectorAll(".sources-dropdown[open]").forEach(d => d.open = false);
+    });
+
+    // ---- Welcome message + suggested questions ----
+    addBotMessage(bubble => {
+      bubble.appendChild(el("p", "", "Hi! I can explain what Cameron means during his talk, using only his own talks, profile, and company material."));
+      bubble.appendChild(el("p", "", "Every answer is labeled with how sure I am and where it came from."));
+    });
+
+    const suggestions = el("div", "suggestions");
+    ["What is Alliance Desk?", "What does \"takes initiative\" mean?", "What's his favorite movie?"].forEach(text => {
+      const chip = el("button", "chip", text);
+      chip.type = "button";
+      chip.addEventListener("click", () => submit(text));
+      suggestions.appendChild(chip);
+    });
+    inner.appendChild(suggestions);
+
+    // ---- Composer behavior ----
+    function resize() {
+      input.style.height = "auto";
+      input.style.height = Math.min(input.scrollHeight, 140) + "px";
+    }
+    input.addEventListener("input", () => {
+      sendBtn.disabled = !input.value.trim();
+      resize();
+    });
+    input.addEventListener("keydown", e => {
+      if (e.key === "Enter" && !e.shiftKey) { // Enter sends, Shift+Enter makes a new line
+        e.preventDefault();
+        submit(input.value);
+      }
+    });
+    form.addEventListener("submit", e => {
+      e.preventDefault();
+      submit(input.value);
+    });
+  </script>
+</body>
+</html>
