@@ -1,0 +1,33 @@
+{
+  "name": "vertext-speaker-pilot",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.14.0"
+  },
+  "scripts": {
+    "dev": "concurrently -k \"npm:dev:server\" \"npm:dev:client\"",
+    "dev:server": "node server/src/index.js",
+    "dev:client": "vite --host 127.0.0.1",
+    "build": "vite build",
+    "start": "NODE_ENV=production node server/src/index.js"
+  },
+  "dependencies": {
+    "@truefoundry/trueforge-sdk": "^0.180.0",
+    "dotenv": "^16.6.1",
+    "express": "^5.1.0",
+    "falkordb": "^6.9.2",
+    "mammoth": "^1.10.0",
+    "multer": "^2.0.2",
+    "openai": "^5.12.2",
+    "pdf-parse": "^1.1.1",
+    "react": "^19.1.1",
+    "react-dom": "^19.1.1"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^5.0.2",
+    "concurrently": "^9.2.1",
+    "vite": "^7.1.5"
+  }
+}
