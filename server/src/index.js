@@ -10,12 +10,11 @@ import pdfParse from 'pdf-parse';
 import mammoth from 'mammoth';
 import { OfficeParser } from 'officeparser';
 import { id, readStore, writeStore } from './store.js';
-import { generateInsights, integrationStatus, scrapePublicUrl, syncTalkGraph, trueforgeClient, trueforgeReadiness } from './integrations.js';
+import { generateInsights, integrationStatus, scrapePublicUrl, trueforgeClient, trueforgeReadiness } from './integrations.js';
 
 const app = express();
 const server = createServer(app);
 const port = Number(process.env.PORT || 3001);
-const minimumCohort = Math.max(3, Number(process.env.REPORT_MIN_COHORT || 5));
 const here = path.dirname(fileURLToPath(import.meta.url));
 const clientDist = path.resolve(here, '../../dist');
 const upload = multer({
@@ -67,12 +66,12 @@ function sourceCorpus(sources) {
     .join('\n\n---\n\n').slice(0, 110_000);
 }
 
-app.get('/api/health', async (_req, res) => res.json({ ok: true, config: await integrationStatus(), minimumCohort }));
+app.get('/api/health', async (_req, res) => res.json({ ok: true, config: await integrationStatus() }));
 
 app.get('/api/dashboard', async (_req, res, next) => {
   try {
     const store = await readStore();
-    res.json({ talks: store.talks.map(cleanTalk), sources: store.sources.map(cleanSource), reports: store.reports, config: await integrationStatus(), minimumCohort });
+    res.json({ talks: store.talks.map(cleanTalk), sources: store.sources.map(cleanSource), reports: store.reports, config: await integrationStatus() });
   } catch (error) { next(error); }
 });
 
@@ -428,10 +427,10 @@ app.post('/api/talks/:talkId/report', async (req, res, next) => {
     const events = talk.usageEvents || [];
     const prior = store.reports.find((item) => item.talkId === talk.id);
     if (events.length === 0 && prior) return res.json(prior);
-    if (events.length < minimumCohort) {
+    if (events.length === 0) {
       const report = {
         id: prior?.id || id('report'), talkId: talk.id, generatedAt: new Date().toISOString(),
-        limitedData: true, message: `There is not enough activity to safely generate topic-level insights. Reports require at least ${minimumCohort} consented questions.`,
+        limitedData: true, message: 'No consented attendee questions were recorded for this talk.',
         themes: [], unanswered: [], sourceInterests: [],
       };
       talk.usageEvents = [];
@@ -447,41 +446,44 @@ app.post('/api/talks/:talkId/report', async (req, res, next) => {
       await writeStore(store);
       throw error;
     }
-    const safeGroups = groups.filter((item) => item.questionIndices.length >= minimumCohort)
+    const classifiedIndices = new Set(groups.flatMap((item) => item.questionIndices));
+    const unclassifiedIndices = events.map((_, index) => index).filter((index) => !classifiedIndices.has(index));
+    const safeGroups = groups.filter((item) => item.questionIndices.length > 0)
       .map((item) => ({ label: item.label, count: item.questionIndices.length }));
-    if (!safeGroups.length) {
-      const report = {
-        id: prior?.id || id('report'), talkId: talk.id, generatedAt: new Date().toISOString(),
-        limitedData: true, message: 'The questions did not form recurring themes large enough to report safely.',
-        themes: [], unanswered: [], sourceInterests: [],
-      };
-      talk.usageEvents = [];
-      store.reports = [report, ...store.reports.filter((item) => item.talkId !== talk.id)];
-      await writeStore(store);
-      return res.json(report);
+    const unclassifiedQuestions = unclassifiedIndices.map((index) => events[index].question);
+    if (unclassifiedIndices.length) {
+      safeGroups.push({
+        label: unclassifiedIndices.length === 1 ? 'Other individual question' : 'Other individual questions',
+        count: unclassifiedIndices.length,
+      });
     }
     let insights;
     try {
-      insights = await generateInsights({ talk, questions: safeGroups, minimum: minimumCohort });
+      insights = await generateInsights({ talk, questions: safeGroups, individualQuestions: unclassifiedQuestions });
     } catch (error) {
       talk.usageEvents = [];
       await writeStore(store);
       throw error;
     }
     const reportedThemes = Array.isArray(insights.themes) ? insights.themes : [];
+    const questionCount = events.length;
     const report = {
       id: prior?.id || id('report'), talkId: talk.id, generatedAt: new Date().toISOString(),
-      limitedData: false, summary: insights.summary || '',
-      themes: safeGroups.map((group) => {
-        const item = reportedThemes.find((candidate) => candidate.label === group.label);
-        return { label: group.label, count: group.count, insight: item?.insight || '', suggested_action: item?.suggested_action || '' };
+      limitedData: false, summary: insights.summary || `Summary of ${questionCount} consented attendee question${questionCount === 1 ? '' : 's'}.`,
+      themes: safeGroups.map((group, index) => {
+        const item = reportedThemes.find((candidate) => candidate.label === group.label) || reportedThemes[index];
+        return {
+          label: group.label,
+          count: group.count,
+          insight: item?.insight || 'Attendees wanted more context on this topic.',
+          suggested_action: item?.suggested_action || 'Add a short explanation or example to the talk materials.',
+        };
       }),
       unanswered: Array.isArray(insights.unanswered) ? insights.unanswered : [],
       sourceInterests: Array.isArray(insights.source_interests) ? insights.source_interests : [],
     };
     talk.usageEvents = [];
     store.reports = [report, ...store.reports.filter((item) => item.talkId !== talk.id)];
-    await syncTalkGraph({ talk, sources: store.sources.filter((item) => item.talkId === talk.id), report });
     await writeStore(store);
     res.json(report);
   } catch (error) { next(error); }
@@ -493,11 +495,12 @@ async function classifyQuestions(talk, questions) {
     model: process.env.OPENAI_REPORT_MODEL || 'gpt-4.1-mini',
     store: false,
     instructions: [
-      'Classify anonymous attendee questions into broad, recurring information-need themes for a speaker report.',
+      'Classify anonymous attendee questions into broad information-need themes for a speaker report.',
       'Do not infer identities or demographics. Do not include names or quote the questions.',
       'Every question index must appear in at most one group. Use a broad label, not a detailed or identifying label.',
-      'Return only JSON: {"themes":[{"label":"short theme","questionIndices":[0,1]}]}.',
-      'Do not combine unrelated questions just to make a group larger.',
+      'Include clear themes even when only one question supports them. Do not omit a question because its theme appears only once.',
+    'Return only JSON: {"themes":[{"label":"short theme","questionIndices":[0,1]}]}.',
+    'Do not combine unrelated questions just to make a group larger. Include singleton themes when appropriate; every clear question should be classified.',
     ].join(' '),
     input: JSON.stringify({ talk: talk.title, questions: questions.map((question, index) => ({ index, text: question })) }),
   });
@@ -531,8 +534,7 @@ app.get('/api/talks/:talkId/graph', async (req, res, next) => {
       nodes.push({ id: themeId, label: theme.label, count: theme.count, type: 'need' });
       links.push({ source: talk.id, target: themeId, label: 'surfaced' });
     }
-    const graph = await syncTalkGraph({ talk, sources: store.sources.filter((item) => item.talkId === talk.id), report });
-    res.json({ nodes, links, graphConnected: graph.connected });
+    res.json({ nodes, links });
   } catch (error) { next(error); }
 });
 

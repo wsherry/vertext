@@ -17,7 +17,6 @@
     "@truefoundry/trueforge-sdk": "^0.180.0",
     "dotenv": "^16.6.1",
     "express": "^5.1.0",
-    "falkordb": "^6.9.2",
     "mammoth": "^1.10.0",
     "multer": "^2.0.2",
     "officeparser": "^8.2.0",

@@ -1,16 +1,12 @@
-import { FalkorDB } from 'falkordb';
 import OpenAI from 'openai';
 import { TrueForge } from '@truefoundry/trueforge-sdk';
 import { chromium } from 'playwright-core';
-
-let graphClientPromise;
 
 export function configStatus() {
   return {
     trueforge: Boolean(process.env.TRUEFORGE_BASE_URL),
     openai: Boolean(process.env.OPENAI_API_KEY),
     brightData: Boolean(process.env.BRIGHTDATA_BROWSER_API_USERNAME && process.env.BRIGHTDATA_BROWSER_API_PASSWORD),
-    falkorDb: Boolean(process.env.FALKORDB_URL),
   };
 }
 
@@ -95,7 +91,7 @@ export async function scrapePublicUrl(url) {
   }
 }
 
-export async function generateInsights({ talk, questions, minimum }) {
+export async function generateInsights({ talk, questions, individualQuestions = [] }) {
   if (!process.env.OPENAI_API_KEY) throw new Error('Set OPENAI_API_KEY to generate the speaker report.');
   const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
   const result = await openai.responses.create({
@@ -104,7 +100,7 @@ export async function generateInsights({ talk, questions, minimum }) {
     instructions: [
       'You prepare a private speaker feedback report from consented anonymous questions asked during one talk.',
       'Summarize recurring information needs and unresolved areas in plain language.',
-      `Do not include a topic unless at least ${minimum} questions support it.`,
+      'Include useful themes even when they are supported by only one question. Do not claim a need is recurring unless multiple questions support it.',
       'Do not quote questions verbatim, infer attendee identities or demographics, or judge the speaker.',
       'Return only a JSON object with keys: summary (string), themes (array of {label, count, insight, suggested_action}), unanswered (array of strings), source_interests (array of strings).',
       'Themes must use only the supplied topic groups and counts. Keep source_interests general.',
@@ -112,6 +108,7 @@ export async function generateInsights({ talk, questions, minimum }) {
     input: JSON.stringify({
       talk: { title: talk.title, description: talk.description },
       aggregatedTopicGroups: questions,
+      ...(individualQuestions.length ? { individualQuestions } : {}),
     }),
   });
   const text = result.output_text || '';
@@ -119,38 +116,4 @@ export async function generateInsights({ talk, questions, minimum }) {
   const end = text.lastIndexOf('}');
   if (start < 0 || end < start) throw new Error('OpenAI returned a report in an unexpected format.');
   return JSON.parse(text.slice(start, end + 1));
-}
-
-export async function syncTalkGraph({ talk, sources, report }) {
-  if (!process.env.FALKORDB_URL) return { connected: false };
-  try {
-    graphClientPromise ??= FalkorDB.connect({ url: process.env.FALKORDB_URL });
-    const db = await graphClientPromise;
-    const graph = db.selectGraph(process.env.FALKORDB_GRAPH || 'conference_talk_companion');
-    await graph.query(
-      'MATCH (t:Talk {id: $id})-[r]->(n) DELETE r, n',
-      { params: { id: talk.id } },
-    );
-    await graph.query(
-      'MERGE (t:Talk {id: $id}) SET t.title = $title, t.speaker = $speaker',
-      { params: { id: talk.id, title: talk.title, speaker: talk.speakerName } },
-    );
-    for (const source of sources.filter((item) => item.status === 'approved')) {
-      await graph.query(
-        'MATCH (t:Talk {id: $talkId}) MERGE (s:Source {id: $sourceId}) SET s.title = $title, s.url = $url, s.kind = $kind MERGE (t)-[:USES_SOURCE]->(s)',
-        { params: { talkId: talk.id, sourceId: source.id, title: source.title, url: source.url || '', kind: source.kind } },
-      );
-    }
-    for (const [index, theme] of (report?.themes || []).entries()) {
-      const themeId = `${talk.id}_${index}`;
-      await graph.query(
-        'MATCH (t:Talk {id: $talkId}) MERGE (n:InformationNeed {id: $themeId}) SET n.label = $label, n.count = $count MERGE (t)-[:REVEALED_NEED]->(n)',
-        { params: { talkId: talk.id, themeId, label: theme.label, count: theme.count } },
-      );
-    }
-    return { connected: true };
-  } catch (error) {
-    console.warn(`FalkorDB sync skipped: ${error.message}`);
-    return { connected: false, error: error.message };
-  }
 }

@@ -5,6 +5,9 @@ export default defineConfig({
   plugins: [react()],
   server: {
     port: Number(process.env.VITE_PORT || 5173),
-    proxy: { '/api': `http://127.0.0.1:${process.env.API_PORT || 3001}` },
+    proxy: {
+      '/api': `http://127.0.0.1:${process.env.API_PORT || 3001}`,
+      '/attendee': `http://127.0.0.1:${process.env.API_PORT || 3001}`,
+    },
   },
 });
